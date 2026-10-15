@@ -8,6 +8,7 @@ if Threads.nthreads() > 3
   include("staticarrays.jl")
 end
 include("threadpool.jl")
+include("threadpools.jl")
 include("warnings.jl")
 
 include("aqua.jl") # run the Aqua.jl tests last

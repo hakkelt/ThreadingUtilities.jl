@@ -57,24 +57,25 @@ function sleep_all_tasks()
   end
 end
 
-# 1-based tid, pushes into task 2-nthreads()
+# 1-based task index, pushes into the queue of the thread that task is pinned to
 @noinline function wake_thread!(_tid::T) where {T<:Integer}
   tid = _tid % Int
-  tidp1 = tid + one(tid)
-  # `Base.Workqueues` holds one queue per thread; `tidp1` must be a valid thread id.
+  # `TASKS[tid]` and `THREADIDS[tid]` are accessed below; `tid` ranges over `1:length(TASKS)`.
+  assume(unsigned(length(TASKS)) >= unsigned(tid))
+  assume(length(THREADIDS) == length(TASKS))
+  jltid = (@inbounds THREADIDS[tid]) % Int # 0-based Julia thread id
+  # `Base.Workqueues` holds one queue per thread; `jltid + 1` must be a valid thread id.
   # On Julia 1.13+ `Base.Workqueues` is a `OncePerThread`, and `Base.Workqueues()` is
   # the *current* thread's queue, so its `length` is the number of queued tasks, not
-  # the number of threads. Assuming that count is `> tid` is false in general and lets
+  # the number of threads. Assuming that count is `> jltid` is false in general and lets
   # LLVM 22 (Julia 1.14) miscompile the `length` loop (segfault).
   @static if VERSION >= v"1.13-"
-    assume(unsigned(Threads.maxthreadid()) > unsigned(tid))
+    assume(unsigned(Threads.maxthreadid()) > unsigned(jltid))
   else
-    assume(unsigned(length(Base.Workqueues)) > unsigned(tid))
+    assume(unsigned(length(Base.Workqueues)) > unsigned(jltid))
   end
-  # `TASKS[tid]` is accessed below; `tid` ranges over `1:length(TASKS)`.
-  assume(unsigned(length(TASKS)) >= unsigned(tid))
-  @inbounds push!(Base.Workqueues[tidp1], TASKS[tid])
-  ccall(:jl_wakeup_thread, Cvoid, (Int16,), tid % Int16)
+  @inbounds push!(Base.Workqueues[jltid + 1], TASKS[tid])
+  ccall(:jl_wakeup_thread, Cvoid, (Int16,), jltid % Int16)
 end
 
 @noinline function checktask(tid)
